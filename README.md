@@ -5,17 +5,25 @@ This capstone project investigates whether public financial investments distribu
 
 # Tools Used 
 .R (R studio)
+
 .Cor-test (R)
+
 .Leaflet(R)
+
 .T-test(R)
+
 .Packages(Tigris)
 
 # Project Structure 
-This repository contains 
+ This repository contains 
 . Data/Raw/Processed data 
-. Ingestion/ code for data processing 
+
+. Ingestion/ code for data processing
+
 . EDA/ exploratory data analysis
-. Analysis/ modeling and visualizing 
+
+. Analysis/ modeling and visualizing
+
 . Reports/ Final outcomes and presentation 
 
 # Author 

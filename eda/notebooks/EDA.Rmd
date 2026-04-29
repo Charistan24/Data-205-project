@@ -1,0 +1,169 @@
+---
+title: "EDA"
+author: "Ike Charistan D"
+format: html
+---
+
+## Load the library and the datasets
+```{r}
+library(tidyverse)
+library(plotly)
+library(webshot2)
+library(dplyr)
+library(janitor)
+setwd("~/Desktop/Data 110")
+grants <- read.csv("State_of_Maryland_Grant_and_Loan_Data__FY2009_to_FY2024.csv")
+setwd("~/Desktop/Data 205")
+wages <-read.csv("Maryland_Average_Wage_Per_Job_(Current_Dollars)__2014-2024_20260414.csv") 
+head(wages)
+head(grants)
+```
+## EDA (Cleanning the primary datasets)
+
+```{r}
+grants <- grants %>% clean_names()
+zip_lookup <- zip_lookup %>% clean_names()
+wages_long <- wages_long %>% clean_names()
+```
+
+```{r}
+zip_lookup <- zip_lookup %>%
+  mutate(zip_code = as.character(zip_code))
+```
+
+```{r}
+#names(zip_lookup)
+#names(grants)
+#names(wages_long)
+#names(grants_filtered)
+```
+
+```{r}
+grants_clean <- grants %>%
+  mutate(
+    zip_code = as.character(zip_code),
+    fiscal_year = as.numeric(fiscal_year)
+  ) %>%
+  left_join(zip_lookup, by = "zip_code") %>%
+  
+  # Keep only relevant counties EARLY
+  filter(county %in% c("Montgomery County", "Prince George's County")) %>%
+  
+  # Aggregate properly
+  group_by(fiscal_year, county) %>%
+  summarize(
+    total_grant_amount = sum(amount, na.rm = TRUE),
+    .groups = "drop"
+  )
+head(grants_clean)
+```
+
+## Join Datasets
+
+```{r}
+df <- grants_clean %>%
+  inner_join(wages_long, by = c("fiscal_year" = "year", "county" = "county"))
+head(df)
+```
+```{r}
+str(df)
+library(readr)
+
+df <- df %>%
+  mutate(avg_wage = parse_number(avg_wage))
+```
+## 1st Visualisation
+
+```{r}
+library(scales)
+
+ggplot(df, aes(x = factor(fiscal_year),
+               y = total_grant_amount,
+               fill = county)) +
+  geom_col(position = "dodge") +
+  scale_fill_manual(values = c(
+    "Montgomery County" = "#003366",
+    "Prince George's County" = "#C8102E"
+  )) +
+  scale_y_continuous(labels = comma) +  # <-- this fixes it
+  labs(
+    title = "Annual State Grant Totals: Montgomery vs. Prince George's County",
+    x = "Fiscal Year",
+    y = "Total Funding ($)",
+    fill = "County"
+  ) +
+  theme_minimal()
+```
+## 2nd Visualisation
+
+```{r}
+ggplot(df, aes(x = total_grant_amount, 
+               y = avg_wage, 
+               color = county)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1) +
+  labs(
+    title = "Grant Funding vs. Average Wage",
+    x = "Total Grant Amount",
+    y = "Average Wage Per Job",
+    color = "County"
+  ) +
+  theme_light()
+
+```
+## 3rd Visualisation
+
+```{r}
+library(scales)
+df_2023 <- df %>%
+  filter(fiscal_year == 2023)
+
+ggplot(df_2023, aes(x = reorder(county, total_grant_amount), 
+                   y = total_grant_amount, 
+                   fill = county)) +
+  
+  geom_col(show.legend = FALSE, color = "black", linewidth = 0.3) +
+  
+  geom_text(aes(label = dollar(total_grant_amount, scale = 1e-6, suffix = "M")),
+            hjust = -0.2, size = 5, fontface = "bold") +
+  
+  scale_fill_manual(values = c(
+    "Montgomery County" = "#005A9C",
+    "Prince George's County" = "#E21833"
+  )) +
+  
+  coord_flip() +
+  
+  scale_y_continuous(
+    labels = label_dollar(scale = 1e-6, suffix = "M"),
+    expand = expansion(mult = c(0, 0.2))
+  ) +
+  
+  labs(
+    title = "Total State Grant Funding by County",
+    subtitle = "Fiscal Year 2023 Comparison",
+    x = "County Name", 
+    y = "Total Funding (Millions USD)"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 16, face = "bold", color = "black"),
+    axis.text.x = element_text(size = 14),
+    axis.title = element_text(size = 16, face = "bold"),
+    plot.title = element_text(size = 20, face = "bold", color = "#333333"),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank()
+  )
+```
+
+
+
+
+
+
+
+
+
+
+

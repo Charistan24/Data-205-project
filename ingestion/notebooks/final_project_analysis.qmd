@@ -1,0 +1,87 @@
+---
+title: "Final Project Data 205"
+author: "Ike Charistan D"
+format: html
+editor: visual
+---
+
+## Load the library and the datasets
+
+```{r}
+library(tidyverse)
+library(plotly)
+library(webshot2)
+library(dplyr)
+library(janitor)
+setwd("~/Desktop/Data 110")
+grants <- read.csv("State_of_Maryland_Grant_and_Loan_Data__FY2009_to_FY2024.csv")
+setwd("~/Desktop/Data 205")
+wages <-read.csv("Maryland_Average_Wage_Per_Job_(Current_Dollars)__2014-2024_20260414.csv") 
+head(wages)
+head(grants)
+```
+
+## Clean the grants and wages dataset
+
+```{r}
+wages_long <- wages %>%
+  rename(year = 2) %>%
+  select(year, Montgomery.County, Prince.George.s.County) %>%
+  pivot_longer(cols = -year, names_to = "County", values_to = "avg_wage") %>%
+  mutate(
+    County = case_when(
+      County == "Montgomery.County" ~ "Montgomery County",
+      County == "Prince.George.s.County" ~ "Prince George's County"
+    ),
+    year = as.numeric(year)
+  )
+head(wages_long)
+```
+
+## Mapping Grants by Zip code
+
+```{r}
+setwd("~/Desktop/Data 205")
+zip_lookup <- read_csv("Zip_Code_Lookup_Table_20260414.csv")
+head(zip_lookup) 
+```
+
+## EDA (Cleanning the primary datasets)
+
+```{r}
+grants <- grants %>% clean_names()
+zip_lookup <- zip_lookup %>% clean_names()
+wages_long <- wages_long %>% clean_names()
+```
+
+```{r}
+zip_lookup <- zip_lookup %>%
+  mutate(zip_code = as.character(zip_code))
+```
+
+```{r}
+#names(zip_lookup)
+#names(grants)
+#names(wages_long)
+#names(grants_filtered)
+```
+
+```{r}
+grants_clean <- grants %>%
+  mutate(
+    zip_code = as.character(zip_code),
+    fiscal_year = as.numeric(fiscal_year)
+  ) %>%
+  left_join(zip_lookup, by = "zip_code") %>%
+  
+  # Keep only relevant counties EARLY
+  filter(county %in% c("Montgomery County", "Prince George's County")) %>%
+  
+  # Aggregate properly
+  group_by(fiscal_year, county) %>%
+  summarize(
+    total_grant_amount = sum(amount, na.rm = TRUE),
+    .groups = "drop"
+  )
+head(grants_clean)
+```

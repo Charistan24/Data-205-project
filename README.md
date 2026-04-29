@@ -24,6 +24,7 @@ Provides annual county-level wage estimates used as a proxy for local economic p
 
 # Project Structure 
  This repository contains 
+ 
 . Data/Raw/Processed data 
 
 . Ingestion/ code for data processing

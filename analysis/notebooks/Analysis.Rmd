@@ -1,0 +1,265 @@
+---
+title: "Data 205 fp"
+author: "Ike Charistan D"
+format: html
+editor: visual
+---
+
+## Load Libraries
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(janitor)
+library(plotly)
+library(leaflet)
+library(sf)
+library(tigris)
+library(scales)
+library(readr)
+```
+
+## Load Datasets
+
+```{r}
+# Dataset 1 = Maryland grants and loans
+setwd("~/Desktop/Data 110")
+grants <- read.csv("State_of_Maryland_Grant_and_Loan_Data__FY2009_to_FY2024.csv")
+
+# Dataset 2 = Average wage per job
+setwd("~/Desktop/Data 205")
+wages <- read.csv("Maryland_Average_Wage_Per_Job_(Current_Dollars)__2014-2024_20260414.csv")
+
+# Dataset 3 = ZIP code lookup table
+zip_lookup <- read_csv("Zip_Code_Lookup_Table_20260414.csv")
+```
+
+## Clean & Prepare Data
+
+```{r}
+# Clean column names
+grants <- clean_names(grants)
+wages <- clean_names(wages)
+zip_lookup <- clean_names(zip_lookup)
+
+# Convert ZIP to text
+zip_lookup <- zip_lookup %>%
+  mutate(zip_code = as.character(zip_code))
+```
+
+## Reshaping the Wage Data
+
+```{r}
+# Convert wage data into long format for easier merging
+
+wages_long <- wages %>%
+  rename(year = 2) %>%
+  select(year, montgomery_county, prince_george_s_county) %>%
+  pivot_longer(cols = -year,
+               names_to = "county",
+               values_to = "avg_wage") %>%
+  mutate(
+    county = case_when(
+      county == "montgomery_county" ~ "Montgomery County",
+      county == "prince_george_s_county" ~ "Prince George's County"
+    ),
+    year = as.numeric(year)
+  )
+```
+
+## Clean Grants Data
+
+```{r}
+# Match grants to counties using ZIP codes
+# Then total yearly funding for each county
+
+grants_clean <- grants %>%
+  mutate(
+    zip_code = as.character(zip_code),
+    fiscal_year = as.numeric(fiscal_year)
+  ) %>%
+  left_join(zip_lookup, by = "zip_code") %>%
+  filter(county %in% c("Montgomery County", "Prince George's County")) %>%
+  group_by(fiscal_year, county) %>%
+  summarize(
+    total_grant_amount = sum(amount, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+## Merge Datasets
+
+```{r}
+# Final dataset combines funding and wages
+
+df <- grants_clean %>%
+  inner_join(wages_long,
+             by = c("fiscal_year" = "year",
+                    "county" = "county"))
+
+df <- df %>%
+  mutate(avg_wage = parse_number(avg_wage))
+```
+
+## Visualization 1: Annual State Funding Comparison
+
+```{r}
+ggplot(df, aes(x = factor(fiscal_year),
+               y = total_grant_amount,
+               fill = county)) +
+  geom_col(position = "dodge") +
+  scale_fill_manual(values = c(
+    "Montgomery County" = "#003366",
+    "Prince George's County" = "#C8102E")) +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Annual State Grant Totals",
+    x = "Year",
+    y = "Funding ($)",
+    fill = "County"
+  ) +
+  theme_minimal()
+```
+
+This graph compares how much state funding each county received each year.
+
+## Visualization 2: Funding vs Wages
+
+```{r}
+ggplot(df, aes(x = total_grant_amount,
+               y = avg_wage,
+               color = county)) +
+  geom_point(size = 3) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(
+    title = "Grant Funding vs Average Wage",
+    x = "Funding",
+    y = "Average Wage"
+  ) +
+  theme_light()
+```
+
+Upward trend lines suggest counties receiving more funding also had higher wages.
+
+## Visualization 3: 2023 County Comparison
+
+```{r}
+df_2023 <- df %>%
+  filter(fiscal_year == 2023)
+
+ggplot(df_2023, aes(x = reorder(county, total_grant_amount), 
+                   y = total_grant_amount, 
+                   fill = county)) +
+  
+  geom_col(show.legend = FALSE, color = "black", linewidth = 0.3) +
+  
+  geom_text(aes(label = dollar(total_grant_amount, scale = 1e-6, suffix = "M")),
+            hjust = -0.2, size = 5, fontface = "bold") +
+  
+  scale_fill_manual(values = c(
+    "Montgomery County" = "#005A9C",
+    "Prince George's County" = "#E21833"
+  )) +
+  
+  coord_flip() +
+  
+  scale_y_continuous(
+    labels = label_dollar(scale = 1e-6, suffix = "M"),
+    expand = expansion(mult = c(0, 0.2))
+  ) +
+  
+  labs(
+    title = "Total State Grant Funding by County",
+    subtitle = "Fiscal Year 2023 Comparison",
+    x = "County Name", 
+    y = "Total Funding (Millions USD)"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 16, face = "bold", color = "black"),
+    axis.text.x = element_text(size = 14),
+    axis.title = element_text(size = 16, face = "bold"),
+    plot.title = element_text(size = 20, face = "bold", color = "#333333"),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank()
+  )
+```
+
+## CORRELATION ANALYSIS
+
+```{r}
+df %>%
+  group_by(county) %>%
+  summarize(
+    correlation = cor(total_grant_amount,
+                      avg_wage,
+                      use = "complete.obs")
+  )
+```
+
+**Interpretation**
+
+"While funding and wage growth are strongly correlated, this relationship is associative rather than causal. Montgomery County’s higher correlation suggests more efficient conversion of public investment into high-wage sectors. In Prince George’s County, a more moderate correlation indicates that external factors—such as labor market conditions or industry mix—may dampen the economic impact of state funding."
+
+## STATISTICAL TESTING:Pearson Correlation Test
+
+**Q:** Is there statistically significant evidence of a positive linear relationship between state grant funding and average wages in each county?
+
+$H_0$: p = 0 $H_a$: p \> 0
+
+**Montgomery County**
+
+```{r}
+df %>%
+  filter(county == "Montgomery County") %>%
+  with(cor.test(total_grant_amount, avg_wage))
+```
+
+
+**Prince George's County**
+
+```{r}
+df %>%
+  filter(county == "Prince George's County") %>%
+  with(cor.test(total_grant_amount, avg_wage))
+```
+
+
+## PAIRED T-TEST
+
+**Hypotheses**
+
+$H_0$: $\mu_d$ = 0 $H_a$: $\mu_d$ $\neq$ 0
+
+```{r}
+mont <- df %>%
+  filter(county == "Montgomery County") %>%
+  arrange(fiscal_year) %>%
+  pull(avg_wage)
+
+pg <- df %>%
+  filter(county == "Prince George's County") %>%
+  arrange(fiscal_year) %>%
+  pull(avg_wage)
+
+t.test(mont, pg, paired = TRUE)
+```
+```{r}
+paired_df <- df %>%
+  select(fiscal_year, county, avg_wage) %>%
+  pivot_wider(names_from = county,
+              values_from = avg_wage) %>%
+  mutate(diff =
+           `Montgomery County` -
+           `Prince George's County`)
+
+ggplot(paired_df, aes(x = fiscal_year, y = diff)) +
+  geom_col(fill = "#003366") +
+  labs(
+    title = "Annual Wage Gap",
+    x = "Year",
+    y = "Difference ($)"
+  ) +
+  theme_minimal()
+```
